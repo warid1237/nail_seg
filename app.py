@@ -4,21 +4,10 @@ import numpy as np
 from ultralytics import YOLO
 from streamlit_webrtc import webrtc_streamer, VideoProcessorBase
 import av
-import asyncio
 import os
 
-os.environ["STREAMLIT_WATCHDOG"] = "0"  # Prevent watchdog issues in Streamlit
-
-# Ensure an asyncio event loop exists
-def get_or_create_event_loop():
-    try:
-        return asyncio.get_running_loop()
-    except RuntimeError:
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-        return loop
-
-loop = get_or_create_event_loop()
+# Disable Streamlit file watcher to avoid conflicts with Torch
+os.environ["STREAMLIT_WATCHDOG"] = "0"
 
 # Load YOLO model
 try:
@@ -38,9 +27,8 @@ class VideoProcessor(VideoProcessorBase):
             # Convert frame to OpenCV format
             img = frame.to_ndarray(format="bgr24")
 
-            # Run YOLO segmentation asynchronously
-            future = loop.run_in_executor(None, lambda: model(img, conf=0.3, imgsz=640))
-            results = loop.run_until_complete(future)
+            # Run YOLO segmentation (no asyncio)
+            results = model(img, conf=0.3, imgsz=640)
 
             # Create an empty mask
             colored_mask = np.zeros_like(img, dtype=np.uint8)
@@ -48,10 +36,10 @@ class VideoProcessor(VideoProcessorBase):
             # Process masks safely
             if results and results[0].masks is not None:
                 for mask in results[0].masks.data:
-                    mask = mask.cpu().numpy()  # Convert to numpy array
-                    mask = cv2.resize(mask, (img.shape[1], img.shape[0]))  # Resize to match input image
-                    mask = (mask > 0.3).astype(np.uint8)  # Apply threshold
-                    colored_mask[mask == 1] = nail_color  # Apply red color
+                    mask = mask.cpu().numpy()
+                    mask = cv2.resize(mask, (img.shape[1], img.shape[0]))
+                    mask = (mask > 0.3).astype(np.uint8)
+                    colored_mask[mask == 1] = nail_color
 
             # Blend the mask with the original frame
             output_img = cv2.addWeighted(img, 1, colored_mask, 0.5, 0)
