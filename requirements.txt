@@ -1,0 +1,8 @@
+streamlit
+opencv-python
+ultralytics
+torch
+torchvision
+streamlit_webrtc
+aiortc
+asyncio
