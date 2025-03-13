@@ -4,9 +4,21 @@ import numpy as np
 from ultralytics import YOLO
 from streamlit_webrtc import webrtc_streamer, VideoProcessorBase
 import av
+import asyncio
 import os
 
 os.environ["STREAMLIT_WATCHDOG"] = "0"  # Prevent watchdog issues in Streamlit
+
+# Ensure an asyncio event loop exists
+def get_or_create_event_loop():
+    try:
+        return asyncio.get_running_loop()
+    except RuntimeError:
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        return loop
+
+loop = get_or_create_event_loop()
 
 # Load YOLO model
 try:
@@ -26,8 +38,9 @@ class VideoProcessor(VideoProcessorBase):
             # Convert frame to OpenCV format
             img = frame.to_ndarray(format="bgr24")
 
-            # Run YOLO segmentation
-            results = model(img, conf=0.3, imgsz=640)
+            # Run YOLO segmentation asynchronously
+            future = loop.run_in_executor(None, lambda: model(img, conf=0.3, imgsz=640))
+            results = loop.run_until_complete(future)
 
             # Create an empty mask
             colored_mask = np.zeros_like(img, dtype=np.uint8)
