@@ -4,28 +4,20 @@ import numpy as np
 from ultralytics import YOLO
 from streamlit_webrtc import webrtc_streamer, VideoProcessorBase
 import av
-import asyncio
 import os
 
-
 os.environ["STREAMLIT_WATCHDOG"] = "0"  # Prevent watchdog issues in Streamlit
-# Ensure an asyncio event loop exists
-try:
-    loop = asyncio.get_running_loop()
-except RuntimeError:
-    loop = asyncio.new_event_loop()
-    asyncio.set_event_loop(loop)
 
+# Load YOLO model
 try:
     model = YOLO("best.pt")
     st.success("YOLO model loaded successfully!")
 except Exception as e:
     st.error(f"Error loading model: {e}")
 
-
 st.title("Live Nail Segmentation with YOLOv11")
 
-# Define the nail color (BGR format)
+# Define nail color (BGR format)
 nail_color = (0, 0, 255)  # Red nails
 
 class VideoProcessor(VideoProcessorBase):
@@ -41,12 +33,12 @@ class VideoProcessor(VideoProcessorBase):
             colored_mask = np.zeros_like(img, dtype=np.uint8)
 
             # Process masks safely
-            if results and hasattr(results[0], "masks") and results[0].masks is not None:
-                for mask in results[0].masks:
-                    mask = mask.data[0].cpu().numpy()
-                    mask = cv2.resize(mask, (img.shape[1], img.shape[0]))
-                    mask = (mask > 0.3).astype(np.uint8)
-                    colored_mask[mask == 1] = (0, 0, 255)  # Red nails
+            if results and results[0].masks is not None:
+                for mask in results[0].masks.data:
+                    mask = mask.cpu().numpy()  # Convert to numpy array
+                    mask = cv2.resize(mask, (img.shape[1], img.shape[0]))  # Resize to match input image
+                    mask = (mask > 0.3).astype(np.uint8)  # Apply threshold
+                    colored_mask[mask == 1] = nail_color  # Apply red color
 
             # Blend the mask with the original frame
             output_img = cv2.addWeighted(img, 1, colored_mask, 0.5, 0)
@@ -55,7 +47,6 @@ class VideoProcessor(VideoProcessorBase):
         except Exception as e:
             st.error(f"Error in processing frame: {e}")
             return frame  # Return original frame on error
-
 
 webrtc_streamer(
     key="nail-segmentation",
