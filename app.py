@@ -4,10 +4,22 @@ import numpy as np
 from ultralytics import YOLO
 from streamlit_webrtc import webrtc_streamer, VideoProcessorBase
 import av
+import asyncio
 import os
 
 # Disable Streamlit file watcher to avoid conflicts with Torch
 os.environ["STREAMLIT_WATCHDOG"] = "0"
+
+# Ensure an asyncio event loop exists
+def get_or_create_event_loop():
+    try:
+        return asyncio.get_running_loop()
+    except RuntimeError:
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        return loop
+
+loop = get_or_create_event_loop()
 
 # Load YOLO model
 try:
@@ -22,13 +34,17 @@ st.title("Live Nail Segmentation with YOLOv11")
 nail_color = (0, 0, 255)  # Red nails
 
 class VideoProcessor(VideoProcessorBase):
+    def __init__(self):
+        self.loop = asyncio.get_event_loop()
+
     def recv(self, frame):
         try:
             # Convert frame to OpenCV format
             img = frame.to_ndarray(format="bgr24")
 
-            # Run YOLO segmentation (no asyncio)
-            results = model(img, conf=0.3, imgsz=640)
+            # Run YOLO inference asynchronously
+            future = self.loop.run_in_executor(None, lambda: model(img, conf=0.3, imgsz=640))
+            results = asyncio.run_coroutine_threadsafe(future, self.loop).result()
 
             # Create an empty mask
             colored_mask = np.zeros_like(img, dtype=np.uint8)
@@ -49,8 +65,13 @@ class VideoProcessor(VideoProcessorBase):
             st.error(f"Error in processing frame: {e}")
             return frame  # Return original frame on error
 
-webrtc_streamer(
-    key="nail-segmentation",
-    video_processor_factory=VideoProcessor,
-    media_stream_constraints={"video": True, "audio": False},
-)
+# Ensure WebRTC uses asyncio
+async def start_webrtc():
+    webrtc_streamer(
+        key="nail-segmentation",
+        video_processor_factory=VideoProcessor,
+        media_stream_constraints={"video": True, "audio": False},
+    )
+
+# Run the event loop
+asyncio.run(start_webrtc())
