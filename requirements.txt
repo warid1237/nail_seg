@@ -6,3 +6,4 @@ torchvision
 streamlit_webrtc
 aiortc
 asyncio
+torch
